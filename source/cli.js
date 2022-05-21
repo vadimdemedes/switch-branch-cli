@@ -1,16 +1,34 @@
-const React = require('react');
-const {render, Box, Text, Newline, useInput} = require('ink');
-const SelectInput = require('ink-select-input').default;
-const Spinner = require('ink-spinner').default;
-const {UncontrolledTextInput} = require('ink-text-input');
-const Conf = require('conf');
-const execa = require('execa');
-const figures = require('figures');
-const isGitRepository = require('is-git-repository');
-const open = require('open');
-const useStateMachine = require('@cassiozen/usestatemachine').default;
-const getBranches = require('./lib/get-branches');
-const UnauthorizedError = require('./lib/unauthorized-error');
+#!/usr/bin/env node
+
+import React from 'react';
+import {render, Box, Text, Newline, useInput} from 'ink';
+import SelectInputModule from 'ink-select-input';
+import SpinnerModule from 'ink-spinner';
+import {UncontrolledTextInput} from 'ink-text-input';
+import Conf from 'conf';
+import {execa} from 'execa';
+import figures from 'figures';
+import isGitRepository from 'is-git-repository';
+import open from 'open';
+import meow from 'meow';
+import useStateMachineModule from '@cassiozen/usestatemachine';
+import getBranches from './lib/get-branches.js';
+import UnauthorizedError from './lib/unauthorized-error.js';
+
+const cli = meow(
+	`
+		Usage
+		  $ switch-branch
+	`,
+	{
+		importMeta: import.meta,
+	},
+);
+
+// Fix exports which are not compatible with ESM
+const useStateMachine = useStateMachineModule.default;
+const SelectInput = SelectInputModule.default;
+const Spinner = SpinnerModule.default;
 
 const config = new Conf({
 	encryptionKey: 'thisistopsecret',
@@ -32,7 +50,7 @@ const stateMachine = {
 				exists: 'checkingAccessToken',
 				notExists: 'missingGit',
 			},
-			effect: ({send}) => {
+			effect({send}) {
 				if (!isGitRepository()) {
 					send('notExists');
 					return;
@@ -47,7 +65,7 @@ const stateMachine = {
 				exists: 'loadingBranches',
 				notExists: 'creatingAccessToken',
 			},
-			effect: ({context, send}) => {
+			effect({context, send}) {
 				if (!context.accessToken) {
 					send('notExists');
 					return;
@@ -75,7 +93,7 @@ const stateMachine = {
 			on: {
 				saved: 'loadingBranches',
 			},
-			effect: ({setContext, event, send}) => {
+			effect({setContext, event, send}) {
 				setContext(previousContext => ({
 					...previousContext,
 					accessToken: event.accessToken,
@@ -90,7 +108,7 @@ const stateMachine = {
 				accessTokenExpired: 'invalidAccessToken',
 				errored: 'crashed',
 			},
-			effect: async ({context, send}) => {
+			async effect({context, send}) {
 				try {
 					const branches = await getBranches(context.accessToken);
 
@@ -117,12 +135,12 @@ const stateMachine = {
 			},
 		},
 		branchSelected: {
-			effect: async ({event}) => {
+			async effect({event}) {
 				await execa('git', ['checkout', event.branch]);
 			},
 		},
 		crashed: {
-			effect: ({event, setContext}) => {
+			effect({event, setContext}) {
 				setContext(previousContext => ({
 					...previousContext,
 					error: event.error,
@@ -152,21 +170,27 @@ const App = () => {
 		},
 	);
 
-	const saveAccessToken = React.useCallback(accessToken => {
-		config.set('accessToken', accessToken);
+	const saveAccessToken = React.useCallback(
+		accessToken => {
+			config.set('accessToken', accessToken);
 
-		send({
-			type: 'save',
-			accessToken,
-		});
-	}, []);
+			send({
+				type: 'save',
+				accessToken,
+			});
+		},
+		[send],
+	);
 
-	const selectBranch = React.useCallback(branch => {
-		send({
-			type: 'selected',
-			branch: branch.value,
-		});
-	}, []);
+	const selectBranch = React.useCallback(
+		branch => {
+			send({
+				type: 'selected',
+				branch: branch.value,
+			});
+		},
+		[send],
+	);
 
 	return (
 		<Box paddingX={2} paddingY={1}>
@@ -190,7 +214,7 @@ const App = () => {
 
 			{state.value === 'invalidAccessToken' && (
 				<Text>
-					Your personal access token is either expired or invalid.
+					Your personal access token is either revoked, expired or invalid.
 					<Newline count={2} />
 					Press <Text bold>Enter</Text> to create a new one.
 				</Text>

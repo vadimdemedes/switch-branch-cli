@@ -1,4 +1,4 @@
-const execa = require('execa');
+import {execa} from 'execa';
 
 const getDefaultBranch = async () => {
 	const result = await execa('git', [
@@ -10,4 +10,4 @@ const getDefaultBranch = async () => {
 	return result.stdout.replace('origin/', '').trim();
 };
 
-module.exports = getDefaultBranch;
+export default getDefaultBranch;

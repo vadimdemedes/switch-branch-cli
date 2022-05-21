@@ -1,4 +1,4 @@
-const got = require('got');
+import got from 'got';
 
 const fetchUser = async accessToken => {
 	const response = await got(`https://api.github.com/user`, {
@@ -12,4 +12,4 @@ const fetchUser = async accessToken => {
 	return response.body;
 };
 
-module.exports = fetchUser;
+export default fetchUser;

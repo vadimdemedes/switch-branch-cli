@@ -1,5 +1,5 @@
-const got = require('got');
-const parseLinkHeader = require('parse-link-header');
+import got from 'got';
+import parseLinkHeader from 'parse-link-header';
 
 const fetchPullRequests = async (accessToken, repository) => {
 	const pullRequests = [];
@@ -7,6 +7,7 @@ const fetchPullRequests = async (accessToken, repository) => {
 	let page = '1';
 
 	while (hasMore) {
+		// eslint-disable-next-line no-await-in-loop
 		const response = await got(
 			`https://api.github.com/repos/${repository}/pulls`,
 			{
@@ -16,6 +17,7 @@ const fetchPullRequests = async (accessToken, repository) => {
 				},
 				searchParams: {
 					sort: 'updated',
+					// eslint-disable-next-line camelcase
 					per_page: '100',
 					page,
 				},
@@ -26,7 +28,7 @@ const fetchPullRequests = async (accessToken, repository) => {
 		pullRequests.push(...response.body);
 		hasMore = false;
 
-		const linkHeader = response.headers['link'];
+		const linkHeader = response.headers.link;
 
 		if (linkHeader) {
 			const link = parseLinkHeader(linkHeader);
@@ -41,4 +43,4 @@ const fetchPullRequests = async (accessToken, repository) => {
 	return pullRequests;
 };
 
-module.exports = fetchPullRequests;
+export default fetchPullRequests;

@@ -1,10 +1,10 @@
-const got = require('got');
-const gitRemoteOriginUrl = require('git-remote-origin-url');
-const parseGithubUrl = require('parse-github-url');
-const getDefaultBranch = require('./get-default-branch');
-const fetchUser = require('./fetch-user');
-const fetchPullRequests = require('./fetch-pull-requests');
-const UnauthorizedError = require('./unauthorized-error');
+import {HTTPError} from 'got';
+import gitRemoteOriginUrl from 'git-remote-origin-url';
+import parseGithubUrl from 'parse-github-url';
+import getDefaultBranch from './get-default-branch.js';
+import fetchUser from './fetch-user.js';
+import fetchPullRequests from './fetch-pull-requests.js';
+import UnauthorizedError from './unauthorized-error.js';
 
 const getBranches = async accessToken => {
 	try {
@@ -38,13 +38,12 @@ const getBranches = async accessToken => {
 
 		return branches;
 	} catch (error) {
-		if (error instanceof got.HTTPError && error.response.statusCode === 401) {
+		if (error instanceof HTTPError && error.response.statusCode === 401) {
 			throw new UnauthorizedError();
-			return;
 		}
 
 		throw error;
 	}
 };
 
-module.exports = getBranches;
+export default getBranches;
