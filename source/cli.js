@@ -15,7 +15,7 @@ import useStateMachineModule from '@cassiozen/usestatemachine';
 import getBranches from './lib/get-branches.js';
 import UnauthorizedError from './lib/unauthorized-error.js';
 
-const cli = meow(
+meow(
 	`
 		Usage
 		  $ switch-branch
