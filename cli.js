@@ -1,20 +1,16 @@
 const React = require('react');
 const {render, Box, Text, Newline, useInput} = require('ink');
-const Spinner = require('ink-spinner').default;
 const SelectInput = require('ink-select-input').default;
-const TextInput = require('ink-text-input').default;
-const got = require('got');
+const Spinner = require('ink-spinner').default;
+const {UncontrolledTextInput} = require('ink-text-input');
+const Conf = require('conf');
 const execa = require('execa');
-const gitRemoteOriginUrl = require('git-remote-origin-url');
-const parseGithubUrl = require('parse-github-url');
-const formatDistanceToNow = require('date-fns/formatDistanceToNow');
 const figures = require('figures');
 const isGitRepository = require('is-git-repository');
-const Conf = require('conf');
 const open = require('open');
-const getDefaultBranch = require('./lib/get-default-branch');
-const fetchUser = require('./lib/fetch-user');
-const fetchPullRequests = require('./lib/fetch-pull-requests');
+const useStateMachine = require('@cassiozen/usestatemachine').default;
+const getBranches = require('./lib/get-branches');
+const UnauthorizedError = require('./lib/unauthorized-error');
 
 const config = new Conf({
 	encryptionKey: 'thisistopsecret',
@@ -25,114 +21,119 @@ const config = new Conf({
 	},
 });
 
-const initialState = {
-	step: 'initial',
-	branches: undefined,
-	selectedBranch: undefined,
-	accessToken: config.get('accessToken'),
-	error: undefined,
-};
+const stateMachine = {
+	initial: 'checkingGitRepository',
+	context: {
+		accessToken: config.get('accessToken'),
+	},
+	states: {
+		checkingGitRepository: {
+			on: {
+				exists: 'checkingAccessToken',
+				notExists: 'missingGit',
+			},
+			effect: ({send}) => {
+				if (!isGitRepository()) {
+					send('notExists');
+					return;
+				}
 
-const reducer = (state, action) => {
-	switch (action.type) {
-		case 'missing-git':
-			return {
-				...state,
-				step: 'missing-git',
-			};
+				send('exists');
+			},
+		},
+		missingGit: {},
+		checkingAccessToken: {
+			on: {
+				exists: 'loadingBranches',
+				notExists: 'creatingAccessToken',
+			},
+			effect: ({context, send}) => {
+				if (!context.accessToken) {
+					send('notExists');
+					return;
+				}
 
-		case 'create-access-token':
-			return {
-				...state,
-				step: 'create-access-token',
-			};
+				send('exists');
+			},
+		},
+		creatingAccessToken: {
+			on: {
+				create: 'askingAccessToken',
+			},
+		},
+		invalidAccessToken: {
+			on: {
+				create: 'askingAccessToken',
+			},
+		},
+		askingAccessToken: {
+			on: {
+				save: 'savingAccessToken',
+			},
+		},
+		savingAccessToken: {
+			on: {
+				saved: 'loadingBranches',
+			},
+			effect: ({setContext, event, send}) => {
+				setContext(previousContext => ({
+					...previousContext,
+					accessToken: event.accessToken,
+				}));
 
-		case 'invalid-access-token':
-			return {
-				...state,
-				step: 'invalid-access-token',
-			};
+				send('saved');
+			},
+		},
+		loadingBranches: {
+			on: {
+				loaded: 'listingBranches',
+				accessTokenExpired: 'invalidAccessToken',
+				errored: 'crashed',
+			},
+			effect: async ({context, send}) => {
+				try {
+					const branches = await getBranches(context.accessToken);
 
-		case 'ask-access-token': {
-			return {
-				...state,
-				step: 'ask-access-token',
-				accessToken: '',
-			};
-		}
+					send({
+						type: 'loaded',
+						branches,
+					});
+				} catch (error) {
+					if (error instanceof UnauthorizedError) {
+						send('accessTokenExpired');
+						return;
+					}
 
-		case 'set-access-token':
-			return {
-				...state,
-				accessToken: action.accessToken,
-			};
-
-		case 'save-access-token':
-			return {
-				...state,
-				step: 'loading-branches',
-			};
-
-		case 'load-branches':
-			return {
-				...state,
-				step: 'loading-branches',
-			};
-
-		case 'set-branches':
-			return {
-				...state,
-				step: 'list-branches',
-				branches: action.branches,
-			};
-
-		case 'select-branch':
-			return {
-				...state,
-				step: 'branch-selected',
-				selectedBranch: action.branch,
-			};
-
-		case 'crash':
-			return {
-				...state,
-				step: 'crash',
-				error: action.error,
-			};
-
-		default:
-			return state;
-	}
+					send({
+						type: 'errored',
+						error,
+					});
+				}
+			},
+		},
+		listingBranches: {
+			on: {
+				selected: 'branchSelected',
+			},
+		},
+		branchSelected: {
+			effect: async ({event}) => {
+				await execa('git', ['checkout', event.branch]);
+			},
+		},
+		crashed: {
+			effect: ({event, setContext}) => {
+				setContext(previousContext => ({
+					...previousContext,
+					error: event.error,
+				}));
+			},
+		},
+	},
 };
 
 const App = () => {
-	const [state, dispatch] = React.useReducer(reducer, initialState);
-
-	React.useEffect(() => {
-		if (state.step !== 'initial') {
-			return;
-		}
-
-		if (!isGitRepository()) {
-			dispatch({
-				type: 'missing-git',
-			});
-
-			return;
-		}
-
-		if (!state.accessToken) {
-			dispatch({
-				type: 'create-access-token',
-			});
-
-			return;
-		}
-
-		dispatch({
-			type: 'load-branches',
-		});
-	}, [state]);
+	const [state, send] = useStateMachine(stateMachine);
 
 	useInput(
 		(_input, key) => {
@@ -141,123 +142,42 @@ const App = () => {
 					'https://github.com/settings/tokens/new?description=switch-branch-cli&scopes=repo',
 				);
 
-				dispatch({
-					type: 'ask-access-token',
-				});
+				send('create');
 			}
 		},
 		{
 			isActive:
-				state.step === 'create-access-token' ||
-				state.step === 'invalid-access-token',
+				state.value === 'creatingAccessToken' ||
+				state.value === 'invalidAccessToken',
 		},
 	);
-
-	const setAccessToken = React.useCallback(accessToken => {
-		dispatch({
-			type: 'set-access-token',
-			accessToken,
-		});
-	}, []);
 
 	const saveAccessToken = React.useCallback(accessToken => {
 		config.set('accessToken', accessToken);
 
-		dispatch({
-			type: 'save-access-token',
+		send({
+			type: 'save',
+			accessToken,
 		});
 	}, []);
 
-	React.useEffect(() => {
-		if (state.step !== 'loading-branches') {
-			return;
-		}
-
-		const run = async () => {
-			try {
-				const origin = await gitRemoteOriginUrl();
-				const {repository} = parseGithubUrl(origin);
-
-				const [user, pullRequests] = await Promise.all([
-					fetchUser(state.accessToken),
-					fetchPullRequests(state.accessToken, repository),
-				]);
-
-				const defaultBranch = await getDefaultBranch();
-				const branches = [
-					{
-						label: `Default (${defaultBranch})`,
-						value: defaultBranch,
-					},
-				];
-
-				for (const pullRequest of pullRequests) {
-					if (pullRequest.user.login !== user.login) {
-						continue;
-					}
-
-					branches.push({
-						label: `${pullRequest.title} (${pullRequest.head.ref})`,
-						value: pullRequest.head.ref,
-						updatedAt: new Date(pullRequest.updated_at),
-					});
-				}
-
-				dispatch({
-					type: 'set-branches',
-					branches,
-				});
-			} catch (error) {
-				if (
-					error instanceof got.HTTPError &&
-					error.response.statusCode === 401
-				) {
-					dispatch({
-						type: 'invalid-access-token',
-					});
-
-					return;
-				}
-
-				dispatch({
-					type: 'crash',
-					error,
-				});
-			}
-		};
-
-		run();
-	}, [state]);
-
 	const selectBranch = React.useCallback(branch => {
-		dispatch({
-			type: 'select-branch',
+		send({
+			type: 'selected',
 			branch: branch.value,
 		});
 	}, []);
 
-	React.useEffect(() => {
-		if (state.step !== 'branch-selected') {
-			return;
-		}
-
-		const run = async () => {
-			await execa('git', ['checkout', state.selectedBranch]);
-		};
-
-		run();
-	}, [state]);
-
 	return (
 		<Box paddingX={2} paddingY={1}>
-			{state.step === 'missing-git' && (
+			{state.value === 'missingGit' && (
 				<Text>
 					<Text color="red">{figures.cross}</Text> This directory is not a git
 					repository
 				</Text>
 			)}
 
-			{state.step === 'create-access-token' && (
+			{state.value === 'creatingAccessToken' && (
 				<Text>
 					This CLI requires a personal access token for your GitHub account.
 					<Newline />
@@ -268,7 +188,7 @@ const App = () => {
 				</Text>
 			)}
 
-			{state.step === 'invalid-access-token' && (
+			{state.value === 'invalidAccessToken' && (
 				<Text>
 					Your personal access token is either expired or invalid.
 					<Newline count={2} />
@@ -276,43 +196,40 @@ const App = () => {
 				</Text>
 			)}
 
-			{state.step === 'ask-access-token' && (
+			{state.value === 'askingAccessToken' && (
 				<Box flexDirection="column">
 					<Text>
 						Paste your personal access token and press <Text bold>Enter</Text>.
 					</Text>
 
 					<Box marginTop={1}>
-						<TextInput
+						<UncontrolledTextInput
 							placeholder="ghp_12kxo8ak9..."
-							showCursor={state.accessToken.length > 0}
-							value={state.accessToken}
-							onChange={setAccessToken}
 							onSubmit={saveAccessToken}
 						/>
 					</Box>
 				</Box>
 			)}
 
-			{state.step === 'loading-branches' && (
+			{state.value === 'loadingBranches' && (
 				<Box>
 					<Spinner />
 					<Text> Loading branches</Text>
 				</Box>
 			)}
 
-			{state.step === 'list-branches' && (
-				<SelectInput items={state.branches} onSelect={selectBranch} />
+			{state.value === 'listingBranches' && (
+				<SelectInput items={state.event.branches} onSelect={selectBranch} />
 			)}
 
-			{state.step === 'branch-selected' && (
+			{state.value === 'branchSelected' && (
 				<Text>
 					<Text color="green">{figures.tick}</Text> Switched to{' '}
-					<Text bold>{state.selectedBranch}</Text>
+					<Text bold>{state.event.branch}</Text>
 				</Text>
 			)}
 
-			{state.step === 'crash' && (
+			{state.value === 'crashed' && (
 				<Box flexDirection="column">
 					<Text>
 						<Text color="red">{figures.cross}</Text> Something is broken
@@ -322,7 +239,7 @@ const App = () => {
 					</Text>
 
 					<Box marginTop={1}>
-						<Text dimColor>{state.error.stack}</Text>
+						<Text dimColor>{state.event.error.stack}</Text>
 					</Box>
 				</Box>
 			)}

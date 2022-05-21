@@ -13,8 +13,8 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
+		"@cassiozen/usestatemachine": "^1.0.1",
 		"conf": "^10.1.2",
-		"date-fns": "^2.28.0",
 		"execa": "^5.1.1",
 		"figures": "^3.2.0",
 		"git-remote-origin-url": "^3.1.0",
