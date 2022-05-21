@@ -2,7 +2,7 @@
 
 > Switch git branches by their pull request title
 
-![](demo.gif)
+<img src="demo.gif" alt="" width="600">
 
 ## Install
 
