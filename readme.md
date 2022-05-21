@@ -1,4 +1,4 @@
-# switch-branch-cli
+# switch-branch-cli [![Build Status](https://github.com/vadimdemedes/switch-branch-cli/workflows/test/badge.svg)](https://github.com/vadimdemedes/switch-branch-cli/actions)
 
 > Switch git branches by their pull request title
 
