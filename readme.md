@@ -2,6 +2,8 @@
 
 > Switch git branches by their pull request title
 
+![](demo.gif)
+
 ## Install
 
 ```console
