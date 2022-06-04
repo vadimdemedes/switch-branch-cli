@@ -1,7 +1,6 @@
 import {HTTPError} from 'got';
 import gitRemoteOriginUrl from 'git-remote-origin-url';
 import parseGithubUrl from 'parse-github-url';
-import getDefaultBranch from './get-default-branch.js';
 import fetchUser from './fetch-user.js';
 import fetchPullRequests from './fetch-pull-requests.js';
 import UnauthorizedError from './unauthorized-error.js';
@@ -16,13 +15,7 @@ const getBranches = async accessToken => {
 			fetchPullRequests(accessToken, repository),
 		]);
 
-		const defaultBranch = await getDefaultBranch();
-		const branches = [
-			{
-				label: `Default (${defaultBranch})`,
-				value: defaultBranch,
-			},
-		];
+		const branches = [];
 
 		for (const pullRequest of pullRequests) {
 			if (pullRequest.user.login !== user.login) {
