@@ -1,6 +1,6 @@
 {
 	"name": "switch-branch-cli",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Switch Git branches by their pull request title",
 	"license": "MIT",
 	"repository": "vadimdemedes/switch-branch-cli",
