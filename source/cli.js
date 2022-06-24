@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import process from 'node:process';
+import {basename} from 'node:path';
 import React from 'react';
 import {render, Box, Text, Newline, useInput} from 'ink';
 import SelectInputModule from 'ink-select-input';
@@ -31,6 +33,8 @@ const SelectInput = SelectInputModule.default;
 const Spinner = SpinnerModule.default;
 
 const config = new Conf({
+	projectName: basename(process.cwd()),
+	projectSuffix: 'switchbranchcli',
 	encryptionKey: 'thisistopsecret',
 	schema: {
 		accessToken: {
